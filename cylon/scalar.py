@@ -21,7 +21,8 @@ script = os.path.basename(__file__).replace('.py', '')
 args = vars(parser.parse_args())
 
 w = args['world']
-r = args['rows']/w
+global_r = args['rows']
+r = int(global_r/w)
 cols = 2
 max_val = int(r * args['unique'])
 
@@ -44,7 +45,7 @@ try:
         env.barrier()
         t2 = time.time()
 
-        timing['rows'].append(r)
+        timing['rows'].append(global_r)
         timing['world'].append(w)
         timing['it'].append(i)
         timing['time'].append((t2 - t1) * 1000)
@@ -54,6 +55,6 @@ try:
         gc.collect()
 finally:
     if rank == 0:
-        pd.DataFrame(timing).to_csv(f"{args['out']}/{script}_{args['rows']}_{w}.csv", index=False)
+        pd.DataFrame(timing).to_csv(f"{args['out']}/{script}.csv", mode='a', index=False, header=False)
     env.finalize()
 

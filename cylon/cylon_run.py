@@ -1,9 +1,7 @@
 import os
-from os.path import expanduser
-
-from multiprocessing import Process
+import subprocess
+import sys
 import argparse
-from time import sleep
 
 parser = argparse.ArgumentParser(description='generate random data')
 parser.add_argument('-s', dest='script', type=str, nargs='+', help='scripts', required=True)
@@ -37,11 +35,15 @@ for s in args['script']:
         for w in world:
             print(f"{s} rows {r} world_size {w} starting!", flush=True)           
             hostfile = "" if w == 1 else "--hostfile nodes.txt"
-            join_exec = f"mpirun --map-by node --report-bindings -mca btl vader,tcp,openib," \
+            exec = f"mpirun --map-by node --report-bindings -mca btl vader,tcp,openib," \
                         f"self -mca btl_tcp_if_include enp175s0f0 --mca btl_openib_allow_ib 1 " \
                         f"{hostfile} --bind-to core --bind-to socket -np {w} " \
                         f"{PYTHON_EXEC} {script} -r {r} -w {w} -i {it} -o {out_dir} {args['sargs']}"
-            print("running", join_exec, flush=True)
+            print("running", exec, flush=True)
+
+            out = subprocess.run(exec, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+            if out.returncode != 0:
+                sys.exit("Failed: " + out.stderr)
                                 
             print(f"{s} rows {r} world_size {w} done!", flush=True)
     print(f"{s} done!\n ====================================== \n", flush=True)

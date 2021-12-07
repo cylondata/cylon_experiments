@@ -20,7 +20,8 @@ script = os.path.basename(__file__).replace('.py', '')
 args = vars(parser.parse_args())
 
 w = args['world']
-r = args['rows']/w
+global_r = args['rows']
+r = int(global_r/w)
 cols = 2
 max_val = int(r * args['unique'])
 
@@ -34,17 +35,19 @@ rank = env.rank
 
 timing = {'rows': [], 'world':[], 'it':[], 'time':[]}
 
+# print("rank ", rank, flush=True)
+
 try:
     for i in range(args['it']):
         df1 = DataFrame(data)
         df2 = DataFrame(data1)
 
         t1 = time.time()
-        df3 = df1.join(other=df2, on=[0], env=env)
+        df3 = df1.merge(df2, on=[0], env=env)
         env.barrier()
         t2 = time.time()
 
-        timing['rows'].append(r)
+        timing['rows'].append(global_r)
         timing['world'].append(w)
         timing['it'].append(i)
         timing['time'].append((t2 - t1) * 1000)
@@ -55,6 +58,6 @@ try:
         gc.collect()
 finally:
     if rank == 0:
-        pd.DataFrame(timing).to_csv(f"{args['out']}/{script}_{args['rows']}_{w}.csv", index=False)
+        pd.DataFrame(timing).to_csv(f"{args['out']}/{script}.csv", mode='a', index=False, header=False)
     env.finalize()
 
