@@ -24,7 +24,7 @@ w = args['world']
 global_r = args['rows']
 r = int(global_r/w)
 cols = 2
-max_val = int(r * args['unique'])
+max_val = int(global_r * args['unique'])
 
 
 data = pd.DataFrame(np.random.randint(0, max_val, size=(r, cols))).add_prefix('col') 
