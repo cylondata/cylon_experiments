@@ -71,11 +71,15 @@ if __name__ == "__main__":
                 cfg.Engine.put(engine)
                 cfg.StorageFormat.put('pandas')
 
+                if engine=='ray':
+                    cfg.RayRedisAddress.put(f'{HEAD_IP}:6379')
+                    cfg.RayRedisPassword.put(RAY_PW)
+                
                 import modin.pandas as pd
             
                 for i in range(it):
 
-                    df = pd.DataFrame(frame_data).add_prefix("col")
+                    df = pd.DataFrame(frame_data, columns=["col0", "col1"])
                     # df_r = pd.DataFrame(frame_data1).add_prefix("col")
                     print(f"data loaded", flush=True)
 
@@ -92,7 +96,7 @@ if __name__ == "__main__":
                     timing['time'].append((t2 - t1) * 1000)
                     print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {out.shape[0]}", flush=True)
                     
-                    # del df 
+                    del df 
                     del out 
                     gc.collect()
                 
