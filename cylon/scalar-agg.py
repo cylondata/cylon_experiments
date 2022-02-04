@@ -6,7 +6,7 @@ import numpy as np
 import time
 import gc
 import os
-
+from mpi4py import MPI
 
 parser = argparse.ArgumentParser(description='run cylon join')
 parser.add_argument('-r', dest='rows', type=int, required=True)
@@ -35,12 +35,21 @@ rank = env.rank
 
 timing = {'rows': [], 'world':[], 'it':[], 'time':[]}
 
+comm = MPI.COMM_WORLD
+rank = comm.Get_rank()
+
+# dummy allreduce for mpi to build the trees etc
+val = np.random.randint(0, max_val)
+val = comm.allreduce(val)
+
 try:
     for i in range(args['it']):
         df1 = DataFrame(data)
 
         t1 = time.time()
+        # sum is not exopsed in df :( 
         tb3 = df1.to_table().sum(0)
+        tb4 = df1.to_table().sum(1)
         env.barrier()
         t2 = time.time()
 
@@ -51,6 +60,7 @@ try:
         
         del df1
         del tb3
+        del tb4
         gc.collect()
 finally:
     if rank == 0:

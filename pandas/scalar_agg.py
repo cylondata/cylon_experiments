@@ -54,4 +54,4 @@ if __name__ == "__main__":
                 del out 
                 gc.collect()
         finally:
-            pd.DataFrame(timing).to_csv(f'{script}.csv', mode='a', index=False, header=False)
+            pd.DataFrame(timing).to_csv(f'pandas_{script}.csv', mode='a', index=False, header=False)
