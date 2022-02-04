@@ -35,7 +35,7 @@ if __name__ == "__main__":
 
         try:                 
             for i in range(it):
-                df = pd.DataFrame(frame_data, columns=["col0", "col1"])
+                df = pd.DataFrame(frame_data).add_prefix("col")
                 # df_r = pd.DataFrame(frame_data1).add_prefix("col")
                 print(f"data loaded", flush=True)
 
@@ -54,4 +54,4 @@ if __name__ == "__main__":
                 del out 
                 gc.collect()
         finally:
-            pd.DataFrame(timing).to_csv(f'{script}.csv', mode='a', index=False, header=False)
+            pd.DataFrame(timing).to_csv(f'pandas_{script}.csv', mode='a', index=False, header=False)
