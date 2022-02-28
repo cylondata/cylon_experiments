@@ -29,17 +29,18 @@ engine = args['engine']
 script = os.path.basename(__file__).replace('.py', '')
 if engine == 'dask':
     script = 'dask_' + script 
-
+    
+dest='/N/u/d/dnperera/temp'
     
 if __name__ == "__main__":
     os.environ["MODIN_ENGINE"] = engine
 
     for r in rows:
         max_val = r * args['unique']
-        rng = default_rng()
-        frame_data = rng.integers(0, max_val, size=(r, 2)) 
+        # rng = default_rng()
+        # frame_data = rng.integers(0, max_val, size=(r, 2)) 
         val = np.random.randint(0, max_val)
-        print(f"data generated", flush=True)
+        # print(f"data generated", flush=True)
         
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
@@ -79,8 +80,7 @@ if __name__ == "__main__":
                 import modin.pandas as pd
             
                 for i in range(it):
-
-                    df = pd.DataFrame(frame_data, columns=["col0", "col1"])
+                    df = pd.read_csv(f'{dest}/df0_{r}.csv')
                     # df_r = pd.DataFrame(frame_data1).add_prefix("col")
                     print(f"data loaded", flush=True)
 

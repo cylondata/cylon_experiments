@@ -30,16 +30,16 @@ script = os.path.basename(__file__).replace('.py', '')
 if engine == 'dask':
     script = 'dask_' + script 
 
-    
+dest='/N/u/d/dnperera/temp'
+
 if __name__ == "__main__":
     os.environ["MODIN_ENGINE"] = engine
 
     for r in rows:
-        max_val = r * args['unique']
-        rng = default_rng()
-        frame_data = rng.integers(0, max_val, size=(r, 2)) 
-        val = np.random.randint(0, max_val)
-        print(f"data generated", flush=True)
+        # max_val = r * args['unique']
+        # rng = default_rng()
+        # frame_data = rng.integers(0, max_val, size=(r, 2)) 
+        # print(f"data generated", flush=True)
         
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
@@ -79,14 +79,13 @@ if __name__ == "__main__":
                 import modin.pandas as pd
             
                 for i in range(it):
-
-                    df = pd.DataFrame(frame_data, columns=["col0", "col1"])
+                    df = pd.read_csv(f'{dest}/df0_{r}.csv')
                     # df_r = pd.DataFrame(frame_data1).add_prefix("col")
                     print(f"data loaded", flush=True)
 
 
                     t1 = time.time()
-                    out = df.add(val)
+                    out = df.groupby(by='col0').agg({'col1': ["sum", "mean", "std"]})
                     t2 = time.time()
 
                     # timing = {'rows': [], 'world':[], 'it':[], 'time':[]}
@@ -100,7 +99,7 @@ if __name__ == "__main__":
                     del df 
                     del out 
                     gc.collect()
-                
+
                 if engine == 'ray':
                     import ray
                     ray.shutdown()
@@ -110,4 +109,3 @@ if __name__ == "__main__":
                 stop_cluster(engine)
                 import pandas as pd
                 pd.DataFrame(timing).to_csv(f'{script}.csv', mode='a', index=False, header=False)
-                

@@ -22,6 +22,7 @@ args = parser.parse_args()
 args = vars(args)
 print(args, flush=True)
 
+# scale = args['scale']
 world = args['world']
 rows = args['rows']
 it = args['it']
@@ -30,16 +31,17 @@ script = os.path.basename(__file__).replace('.py', '')
 if engine == 'dask':
     script = 'dask_' + script 
 
-    
+dest='/N/u/d/dnperera/temp'
+
 if __name__ == "__main__":
     os.environ["MODIN_ENGINE"] = engine
 
     for r in rows:
-        max_val = r * args['unique']
-        rng = default_rng()
-        frame_data = rng.integers(0, max_val, size=(r, 2)) 
-        val = np.random.randint(0, max_val)
-        print(f"data generated", flush=True)
+        # max_val = r * args['unique']
+        # rng = default_rng()
+        # frame_data = rng.integers(0, max_val, size=(r, 2)) 
+        # frame_data1 = rng.integers(0, max_val, size=(r, 2)) 
+        # print(f"data generated", flush=True)
         
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
@@ -60,10 +62,11 @@ if __name__ == "__main__":
                 elif engine == 'dask':
                     from dask.distributed import Client
                     client = Client(f"{SCHED_IP}:8786")
-                    
+
                     if client is None:
                         print(f"unable to connect dask client", flush=True)
                         exit(1) 
+                
                 
                 import modin.config as cfg
                 # pd.DEFAULT_NPARTITIONS = w
@@ -72,21 +75,16 @@ if __name__ == "__main__":
                 cfg.StorageFormat.put('pandas')
                 cfg.BenchmarkMode.put(True)
 
-                if engine=='ray':
-                    cfg.RayRedisAddress.put(f'{HEAD_IP}:6379')
-                    cfg.RayRedisPassword.put(RAY_PW)
-                
                 import modin.pandas as pd
             
                 for i in range(it):
-
-                    df = pd.DataFrame(frame_data, columns=["col0", "col1"])
-                    # df_r = pd.DataFrame(frame_data1).add_prefix("col")
+                    df_l = pd.read_csv(f'{dest}/df0_{r}.csv')
+                    df_r = pd.read_csv(f'{dest}/df1_{r}.csv')
                     print(f"data loaded", flush=True)
 
 
                     t1 = time.time()
-                    out = df.add(val)
+                    out = df_l.merge(df_r, on='col0', how='inner', suffixes=('_left', '_right'))
                     t2 = time.time()
 
                     # timing = {'rows': [], 'world':[], 'it':[], 'time':[]}
@@ -97,10 +95,11 @@ if __name__ == "__main__":
                     timing['time'].append((t2 - t1) * 1000)
                     print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {out.shape[0]}", flush=True)
                     
-                    del df 
+                    del df_l 
+                    del df_r
                     del out 
                     gc.collect()
-                
+
                 if engine == 'ray':
                     import ray
                     ray.shutdown()
@@ -110,4 +109,3 @@ if __name__ == "__main__":
                 stop_cluster(engine)
                 import pandas as pd
                 pd.DataFrame(timing).to_csv(f'{script}.csv', mode='a', index=False, header=False)
-                
