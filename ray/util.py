@@ -1,5 +1,7 @@
-from platform import node
+import argparse
+import math
 import subprocess
+from sys import prefix
 import time
 
 TOTAL_NODES = 14
@@ -24,9 +26,13 @@ with open(nodes_file, 'r') as fp:
 
 assert len(ips) == TOTAL_NODES
 
-def start_ray(procs, nodes):
+def start_ray(procs, nodes, head, prefix):
+    ray_exec = f'{prefix}/bin/ray' if prefix else RAY_EXEC
+    if not head:
+        head = HEAD_IP
+
     print("starting head", flush=True)
-    query = f"ssh {HEAD_IP} {RAY_EXEC} start --head --port=6379 --node-ip-address={HEAD_IP} --redis-password={RAY_PW} \
+    query = f"ssh {head} {ray_exec} start --head --port=6379 --node-ip-address={head} --redis-password={RAY_PW} \
         --num-cpus={min(2, procs)}"           
     print(f"running: {query}", flush=True)
     subprocess.run(query, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, check=True)
@@ -35,7 +41,7 @@ def start_ray(procs, nodes):
 
     for ip in ips[0:nodes]:
         # print(f"starting worker {ip}", flush=True)
-        query = f"ssh {ip} {RAY_EXEC} start --address=\'{HEAD_IP}:6379\' --node-ip-address={ip} --redis-password={RAY_PW} \
+        query = f"ssh {ip} {ray_exec} start --address=\'{head}:6379\' --node-ip-address={ip} --redis-password={RAY_PW} \
             --num-cpus={procs}"
         print(f"running: {query}", flush=True)
         subprocess.run(query, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, check=True)
@@ -43,18 +49,22 @@ def start_ray(procs, nodes):
     time.sleep(3)
 
 
-def stop_ray():
+def stop_ray(head, prefix):
+    ray_exec = f'{prefix}/bin/ray' if prefix else RAY_EXEC
+    if not head:
+        head = HEAD_IP
+
     import ray
     ray.shutdown()
 
     print("stopping workers", flush=True)
     for ip in ips:
-        subprocess.run(f"ssh {ip} {RAY_EXEC} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        subprocess.run(f"ssh {ip} {ray_exec} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     
     time.sleep(3)
     
     print("stopping head", flush=True)
-    subprocess.run(f"{RAY_EXEC} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True) 
+    subprocess.run(f"ssh {head} {ray_exec} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True) 
     
     time.sleep(3)
 
@@ -94,19 +104,55 @@ def stop_dask():
     time.sleep(3) 
 
 
-def start_cluster(engine, procs, nodes):
+def start_cluster(engine, procs, nodes, head, prefix):
     if engine == 'ray':
-        start_ray(procs, nodes)
+        start_ray(procs, nodes, head, prefix)
     elif engine == 'dask':
         start_dask(procs, nodes)
     else:
         raise Exception(f"{engine} not supported")
 
 
-def stop_cluster(engine):
+def stop_cluster(engine, head, prefix):
     if engine == 'ray':
-        stop_ray()
+        stop_ray(head, prefix)
     elif engine == 'dask':
         stop_dask()
     else:
         raise Exception(f"{engine} not supported")
+
+def cluster_status(engine, head, prefix):
+    if engine== 'ray':
+        ray_exec = f'{prefix}/bin/ray' if prefix else RAY_EXEC
+        if not head:
+            head = HEAD_IP
+        p = subprocess.run(f"ssh {head} {ray_exec} status --redis_password={RAY_PW}", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, text=True) 
+        print(p.stdout)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='manage ray')
+
+
+    parser.add_argument('-n', dest='start', type=int, help='processes', required=False, default=0)
+    parser.add_argument('-e', dest='engine', type=str, help='engine', required=False, default='ray')
+    parser.add_argument('--head', dest='head', type=str, help='head ip', required=False, default=HEAD_IP)
+    parser.add_argument('--prefix', dest='prefix', type=str, help='exec prefix', required=False, default=None)
+    parser.add_argument('--stop', dest='stop', help='stop', required=False, default=False, action='store_true')
+    parser.add_argument('--status', dest='status', help='status', required=False, default=False, action='store_true')
+
+    
+    args = parser.parse_args()
+    args = vars(args)
+
+    head = args['head']
+    prefix = args['prefix']
+
+    if args['start']:
+        w = args['start']
+        procs = int(math.ceil(w / TOTAL_NODES))
+        start_cluster(args['engine'], procs, min(w, TOTAL_NODES), head, prefix)
+    elif args['stop']:
+        stop_cluster(args['engine'], head, prefix)
+    elif args['status']:
+        cluster_status(args['engine'], head, prefix)
