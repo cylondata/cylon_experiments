@@ -38,7 +38,7 @@ for s in args['script']:
             exec = f"mpirun --map-by node --report-bindings --mca btl \"vader,tcp,openib," \
                         f"self\" --mca btl_tcp_if_include enp175s0f0 --mca btl_openib_allow_ib 1 " \
                         f"{hostfile} --bind-to core --bind-to socket --mca mpi_preconnect_mpi 1 -np {w} " \
-                        f"{PYTHON_EXEC} {script} -r {r} -w {w} -i {it} -o {out_dir} {args['sargs']}"
+                        f"{PYTHON_EXEC} {script} -r {r} -i {it} -o {out_dir} {args['sargs']}"
             print("running", exec, flush=True)
 
             out = subprocess.run(exec, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
