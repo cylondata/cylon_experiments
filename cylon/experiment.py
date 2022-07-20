@@ -65,6 +65,7 @@ class CylonExperiment:
             config = MPIConfig()
         elif com == 'gloo':
             config = GlooMPIConfig()
+            config.set_tcp_iface('enp175s0f0')
         elif com == 'ucx':
             config = UCXConfig()
         else:
@@ -129,7 +130,7 @@ class CylonExperiment:
                     timing['tag'].append(t)
                     timing['out'].append(int(sums[0]))
 
-                    print(f"{i} done", flush=True)
+                    # print(f"{i} done", flush=True)
 
                 gc.collect()
                 self.env.barrier()
