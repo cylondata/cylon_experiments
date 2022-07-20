@@ -1,60 +1,44 @@
-from pycylon import DataFrame, CylonEnv
-from pycylon.net import MPIConfig
-import argparse
-import pandas as pd 
-import numpy as np
 import time
-import gc
-import os
+from typing import Tuple, Any
 
+import numpy as np
+from pycylon import DataFrame
 
-parser = argparse.ArgumentParser(description='run cylon join')
-parser.add_argument('-r', dest='rows', type=int, required=True)
-parser.add_argument('-w', dest='world', type=int, required=True)
-parser.add_argument('-i', dest='it', type=int, required=True)
-parser.add_argument('-o', dest='out', type=str, required=True)
-parser.add_argument('-u', dest='unique', type=float, default=1.0, help="unique factor")
+from experiment import CylonExperiment, get_generic_args, execute_experiment
 
-
-script = os.path.basename(__file__).replace('.py', '')
+parser = get_generic_args(description='run cylon scalar')
 
 args = vars(parser.parse_args())
 
-w = args['world']
-global_r = args['rows']
-r = int(global_r/w)
-cols = 2
-max_val = int(global_r * args['unique'])
 
+class ScalarExp(CylonExperiment):
 
-data = pd.DataFrame(np.random.randint(0, max_val, size=(r, cols))).add_prefix('col') 
-val = np.random.randint(0, max_val)
-print(f"data generated", flush=True)
+    def __init__(self, args) -> None:
+        super().__init__('scalar', args)
 
-env = CylonEnv(config=MPIConfig())
-rank = env.rank
+    def generate_data(self, rng, tot_rows, world_sz, cols=2, unique_fac=1) -> Any:
+        df = super().generate_data(rng, tot_rows, world_sz, cols, unique_fac)
+        val = np.random.randint(0, len(df))
 
-timing = {'rows': [], 'world':[], 'it':[], 'time':[]}
+        return df, val
 
-try:
-    for i in range(args['it']):
-        df1 = DataFrame(data)
+    def experiment(self, env, data) -> Tuple[int, float]:
+        df1 = DataFrame(data[0])
+        val = data[1]
 
         t1 = time.time()
-        df3 = df1 + val
+        df2 = df1 + val
         env.barrier()
         t2 = time.time()
 
-        timing['rows'].append(global_r)
-        timing['world'].append(w)
-        timing['it'].append(i)
-        timing['time'].append((t2 - t1) * 1000)
-        
+        l_len = len(df2)
         del df1
-        del df3
-        gc.collect()
-finally:
-    if rank == 0:
-        pd.DataFrame(timing).to_csv(f"{args['out']}/{script}.csv", mode='a', index=False, header=False)
-    env.finalize()
+        del df2
 
+        return l_len, (t2 - t1) * 1000
+
+    def tag(self, args) -> str:
+        return f"u={args['unique']} c={args['comm']}"
+
+
+execute_experiment(ScalarExp, args)

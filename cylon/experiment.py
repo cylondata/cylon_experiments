@@ -1,17 +1,44 @@
-from abc import abstractmethod
+import argparse
 import gc
 import os
-from typing import List, Tuple, Union
-from numpy.random import default_rng
+from abc import abstractmethod
+from typing import Tuple, Any
 
+import numpy as np
+import pandas as pd
+from mpi4py import MPI
+from numpy.random import default_rng
+from pycylon import CylonEnv
 from pycylon.net import MPIConfig
 from pycylon.net.gloo_config import GlooMPIConfig
 from pycylon.net.ucx_config import UCXConfig
-from pycylon import CylonEnv
 
-from mpi4py import MPI
-import pandas as pd
-import numpy as np
+
+def get_generic_args(description):
+    parser = argparse.ArgumentParser(description=description)
+    parser.add_argument('-r', dest='rows', type=int, required=True)
+    parser.add_argument('-i', dest='it', type=int, required=True)
+    parser.add_argument('-o', dest='out', type=str, required=True)
+    parser.add_argument('-u', dest='unique', type=float, default=1.0, help="unique factor")
+    parser.add_argument('-c', dest='comms', nargs='+', type=str, default=['mpi', 'gloo', 'ucx'])
+
+    return parser
+
+
+def execute_experiment(exp_cls, args, run_fn=None):
+    exp = None
+    for comm in args['comms']:
+        args['comm'] = comm
+        if exp is None:
+            exp = exp_cls(args)
+        else:
+            exp.reinitialize_env(args)
+
+        if run_fn:
+            run_fn(exp, args)
+        else:
+            exp.run(args)
+        exp.finalize()
 
 
 class CylonExperiment:
@@ -28,11 +55,11 @@ class CylonExperiment:
         global_r = args['rows']
         cols = 2
 
-        #generate data 
+        # generate data
         rng = default_rng(seed=rank)
         self.data = self.generate_data(rng, global_r, w, cols, args['unique'])
 
-    def reinitialize_env(self, args):        
+    def reinitialize_env(self, args):
         com = args['comm']
         if com == 'mpi':
             config = MPIConfig()
@@ -41,16 +68,11 @@ class CylonExperiment:
         elif com == 'ucx':
             config = UCXConfig()
         else:
-            raise ValueError('unsupported comm ' + self.comm)
+            raise ValueError('unsupported comm ' + com)
 
         self.env = CylonEnv(config)
 
-    def generate_data(self,
-                      rng,
-                      tot_rows,
-                      world_sz,
-                      cols=2,
-                      unique_fac=1) -> Union[pd.DataFrame, List[pd.DataFrame]]:
+    def generate_data(self, rng, tot_rows, world_sz, cols=2, unique_fac=1) -> Any:
         rows = int(tot_rows / world_sz)
 
         max_val = int(tot_rows * unique_fac)
@@ -59,11 +81,11 @@ class CylonExperiment:
 
     @abstractmethod
     def experiment(self, env, data) -> Tuple[int, float]:
-        pass
+        raise NotImplementedError()
 
     @abstractmethod
     def tag(self, args) -> str:
-        pass
+        raise NotImplementedError()
 
     def finalize(self):
         self.env.finalize()
