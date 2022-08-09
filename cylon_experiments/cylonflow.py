@@ -163,7 +163,6 @@ class CFlowRunner(ABC):
             raise ValueError('len(result) != world_size')
         result0 = result[0]
 
-        print('results', result)
         it = self.args['it']
 
         if len(result0[1]) != it or not isinstance(result0[1], np.ndarray):
@@ -176,7 +175,6 @@ class CFlowRunner(ABC):
             times.append(tm)
 
         times_arr = np.mean(np.stack(times), axis=0)
-        print('times shape', times_arr, 'tot_len', total_length)
 
         timing = {
             'rows': [self.args['rows']] * it,

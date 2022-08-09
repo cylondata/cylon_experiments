@@ -54,7 +54,7 @@ class CylonExperiment:
         rank = self.env.rank
         w = self.env.world_size
         global_r = args['rows']
-        cols = 2
+        cols = args['cols']
 
         # generate data
         rng = default_rng(seed=rank)
