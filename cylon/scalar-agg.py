@@ -4,7 +4,7 @@ from typing import Tuple
 
 from pycylon import DataFrame
 
-from experiment import get_generic_args, CylonExperiment, execute_experiment
+from cylon_experiments.experiment import get_generic_args, CylonExperiment, execute_experiment
 
 parser = get_generic_args(description='run cylon scalar')
 
