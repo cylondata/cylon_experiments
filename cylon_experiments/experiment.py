@@ -21,6 +21,7 @@ def get_generic_args(description):
     parser.add_argument('-o', dest='out', type=str, required=True)
     parser.add_argument('-u', dest='unique', type=float, default=1.0, help="unique factor")
     parser.add_argument('-c', dest='comms', nargs='+', type=str, default=['mpi', 'gloo', 'ucx'])
+    parser.add_argument('--cols', dest='cols', type=int, default=2)
 
     return parser
 
