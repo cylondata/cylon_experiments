@@ -157,6 +157,10 @@ class CFlowRunner(ABC):
     def initialize_executor(self):
         raise NotImplementedError()
 
+    @abstractmethod
+    def shutdown(self):
+        raise NotImplementedError()
+
     def run(self):
         result = self.executor.execute_cylon(lambda exp, cylon_env: exp.run_experiment(cylon_env=cylon_env))
         if len(result) != self.world_size:
