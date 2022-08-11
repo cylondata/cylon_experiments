@@ -15,7 +15,7 @@ prefix = sys.prefix
 home_dir = os.path.expanduser("~")
 temp_dir = tempfile.gettempdir()
 
-sched_file = f"{home_dir}/dask-sched.json"
+sched_file = f"{home_dir}/sched.json"
 dask_sched_exec = f"{prefix}/bin/dask-scheduler"
 dask_worker_exec = f"{prefix}/bin/dask-worker"
 
@@ -41,42 +41,53 @@ TOTAL_NODES = len(worker_nodes)
 MAX_PROCS = 40
 TOTAL_MEM = 240
 
+fds = []
+
 
 def start_dask(procs, nodes):
+    global fds
+
+    fds = []
+    fds.append(open(f'/scratch_hdd/dnperera1/dask/scheduler.log', mode='a'))
     print("starting scheduler", flush=True)
     # q = f"{DASK_SCHED} --interface enp175s0f0 --scheduler-file {SCHED_FILE}"
     q = ["ssh", sched_node, dask_sched_exec, "--interface", "enp175s0f0", "--scheduler-file", sched_file]
-    subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    subprocess.Popen(q, stdout=fds[-1], stderr=fds[-1])
 
-    time.sleep(3)
+    time.sleep(2)
 
     print("starting workers", flush=True)
     for ip in worker_nodes[0:nodes]:
+        fds.append(open(f'/scratch_hdd/dnperera1/dask/worker-{ip}.log', mode='a'))
         # q = f"ssh {ip} {DASK_WORKER} v-001:8786 --interface enp175s0f0 --nthreads 1 --nprocs {str(procs)} \
         #         --local-directory /scratch/dnperera/dask/ --scheduler-file {SCHED_FILE}"
         q = ["ssh", ip, dask_worker_exec, f"{sched_node}:8786", "--interface", "enp175s0f0",
-             "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM / procs)} GiB\"",
+             "--nthreads", "1", "--nworkers", str(procs), f"--memory-limit=\"{int(TOTAL_MEM / procs)} GiB\"",
              "--local-directory", "/scratch_hdd/dnperera1/dask/", "--scheduler-file", sched_file]
-        print(f"running {' '.join(q)}", flush=True)
-        subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        # print(f"running {' '.join(q)}", flush=True)
+        subprocess.Popen(q, stdout=fds[-1], stderr=fds[-1])
 
-    time.sleep(5)
+    time.sleep(2)
 
 
 def stop_dask():
+    global fds 
+
     print("stopping dask", flush=True)
     for ip in worker_nodes:
         # print("stopping worker", ip, flush=True)
-        q = ["ssh", ip, "pkill", "-f", "dask-worker"]
+        q = f"ssh {ip} pkill -f dask-worker"
         # print(f"running {' '.join(q)}", flush=True)
-        subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
-
-    time.sleep(5)
+        subprocess.run(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
     # print("stopping scheduler", flush=True)
-    subprocess.Popen(["ssh", sched_node, "pkill", "-f", "dask-scheduler"], stdout=subprocess.PIPE,
-                     stderr=subprocess.STDOUT)
+    subprocess.run(f"ssh {sched_node} pkill -f dask-scheduler", stdout=subprocess.PIPE,
+                     stderr=subprocess.STDOUT, shell=True)
     time.sleep(3)
+
+    for fd in fds:
+        fd.close()    
+    fds = []
 
 
 def get_generic_args(description):
@@ -113,8 +124,6 @@ class DaskRunner(CFlowRunner):
 
 
 def run_dask(args, config, experiment_cls, name, tag):
-    home = str(Path.home())
-    sched_file = os.path.join(home, 'sched.json')
     print('dask scheduler file', sched_file)
     print('args', args)
 
@@ -123,19 +132,21 @@ def run_dask(args, config, experiment_cls, name, tag):
 
     for r in row_cases:
         for w in world_cases:
-            stop_dask()
+            dask_runner = None
+            try:
+                stop_dask()
 
-            procs = int(math.ceil(w / TOTAL_NODES))
-            start_dask(procs, min(w, TOTAL_NODES))
+                procs = int(math.ceil(w / TOTAL_NODES))
+                start_dask(procs, min(w, TOTAL_NODES))
 
-            print(f"world sz {w} procs per worker {procs} iter {args['it']}", flush=True)
+                print(f"world sz {w} procs per worker {procs} iter {args['it']}", flush=True)
 
-            args['rows'] = r
-            args['world_sz'] = w
+                args['rows'] = r
+                args['world_sz'] = w
 
-            dask_runner = DaskRunner(args['world_sz'], name, config, experiment_cls, args,
-                                     scheduler_file=sched_file, tag=tag)
-            dask_runner.run()
-            dask_runner.shutdown()
-
-            stop_dask()
+                dask_runner = DaskRunner(args['world_sz'], name, config, experiment_cls, args,
+                                        scheduler_file=sched_file, tag=tag)
+                dask_runner.run()
+            finally:
+                dask_runner.shutdown()
+                # stop_dask()

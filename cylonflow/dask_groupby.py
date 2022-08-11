@@ -9,6 +9,9 @@ if __name__ == "__main__":
     args = vars(parser.parse_args())
 
     config = GlooFileStoreConfig()
+    config.tcp_iface = 'enp175s0f0'
+    config.file_store_path = '/N/u/d/dnperera/gloo'
+    
     run_dask(args,
              config,
              GroupByExperiment,
