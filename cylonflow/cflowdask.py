@@ -5,9 +5,9 @@ import subprocess
 import sys
 import tempfile
 import time
-from pathlib import Path
 
 from cylon_experiments.cylonflow import CFlowRunner
+
 from cylonflow.dask.executor import CylonDaskExecutor
 
 python_exec = sys.executable
@@ -47,8 +47,7 @@ fds = []
 def start_dask(procs, nodes):
     global fds
 
-    fds = []
-    fds.append(open(f'/scratch_hdd/dnperera1/dask/scheduler.log', mode='a'))
+    fds = [open(f'/scratch_hdd/dnperera1/dask/scheduler.log', mode='a')]
     print("starting scheduler", flush=True)
     # q = f"{DASK_SCHED} --interface enp175s0f0 --scheduler-file {SCHED_FILE}"
     q = ["ssh", sched_node, dask_sched_exec, "--interface", "enp175s0f0", "--scheduler-file", sched_file]
@@ -82,7 +81,7 @@ def stop_dask():
 
     # print("stopping scheduler", flush=True)
     subprocess.run(f"ssh {sched_node} pkill -f dask-scheduler", stdout=subprocess.PIPE,
-                     stderr=subprocess.STDOUT, shell=True)
+                   stderr=subprocess.STDOUT, shell=True)
     time.sleep(3)
 
     for fd in fds:
@@ -148,7 +147,7 @@ def run_dask(args, config, experiment_cls, name, tag):
                 args['world_sz'] = w
 
                 dask_runner = DaskRunner(args['world_sz'], name, config, experiment_cls, args,
-                                        scheduler_file=sched_file, tag=tag)
+                                         scheduler_file=sched_file, tag=tag)
                 dask_runner.run()
                 
                 print(f'----------------- {name} complete case {r} {w}')
