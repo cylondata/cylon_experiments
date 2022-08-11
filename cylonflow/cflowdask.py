@@ -130,8 +130,11 @@ def run_dask(args, config, experiment_cls, name, tag):
     row_cases = args.pop('row_cases')
     world_cases = args.pop('world_cases')
 
+    config.timeout = 1800
+
     for r in row_cases:
         for w in world_cases:
+            print(f'----------------- starting {name} case {r} {w}')
             dask_runner = None
             try:
                 stop_dask()
@@ -147,6 +150,12 @@ def run_dask(args, config, experiment_cls, name, tag):
                 dask_runner = DaskRunner(args['world_sz'], name, config, experiment_cls, args,
                                         scheduler_file=sched_file, tag=tag)
                 dask_runner.run()
+                
+                print(f'----------------- {name} complete case {r} {w}')
+            
+            except Exception:
+                print(f'----------------- {name} case {r} {w} ERROR occured!')
             finally:
                 dask_runner.shutdown()
+                del dask_runner
                 # stop_dask()
