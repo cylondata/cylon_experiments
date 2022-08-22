@@ -1,9 +1,11 @@
 import argparse
 import math
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
+import traceback
 
 import ray
 from cylon_experiments.cylonflow import CFlowRunner
@@ -53,9 +55,10 @@ def start_ray(procs, nodes):
     fds = [open(f'{log_dir}/scheduler.log', mode='a')]
     print("starting head", flush=True)
     q = f"ssh {sched_node} {ray_exec} start --head --port=6379 --node-ip-address={sched_node} " \
-        f"--redis-password={ray_pw} --num-cpus={min(2, procs)}"
-    subprocess.run(q, stdout=fds[-1], stderr=fds[-1], check=True)
+        f"--redis-password={ray_pw} --num-cpus=0" #{min(2, procs)}
+    subprocess.run(q, stdout=fds[-1], stderr=fds[-1], shell=True, check=True)
 
+    print(f"starting workers with {procs} cores pre node", flush=True)
     for ip in worker_nodes[0:nodes]:
         fds.append(open(f'{log_dir}/worker-{ip}.log', mode='a'))
         # print(f"starting worker {ip}", flush=True)
@@ -71,10 +74,12 @@ def stop_ray():
 
     print("stopping workers", flush=True)
     for ip in worker_nodes:
-        subprocess.run(f"ssh {ip} {ray_exec} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        subprocess.run(f"ssh {ip} {ray_exec} stop -f",
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
     print("stopping head", flush=True)
-    subprocess.run(f"ssh {sched_node} {ray_exec} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+    subprocess.run(f"ssh {sched_node} {ray_exec} stop -f",
+                   stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
 
     for fd in fds:
         fd.close()
@@ -83,13 +88,17 @@ def stop_ray():
 
 def get_generic_args(description):
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-R', dest='row_cases', type=int, required=True, nargs='+')
-    parser.add_argument('-W', dest='world_cases', type=int, required=True, nargs='+')
+    parser.add_argument('-R', dest='row_cases', type=int,
+                        required=True, nargs='+')
+    parser.add_argument('-W', dest='world_cases',
+                        type=int, required=True, nargs='+')
     parser.add_argument('-i', dest='it', type=int, required=True)
     parser.add_argument('-o', dest='out', type=str, required=True)
-    parser.add_argument('-u', dest='unique', type=float, default=1.0, help="unique factor")
+    parser.add_argument('-u', dest='unique', type=float,
+                        default=1.0, help="unique factor")
     parser.add_argument('--cols', dest='cols', type=int, default=2)
-    parser.add_argument('-c', dest='comm', type=str, default='gloo', choices=['gloo'])
+    parser.add_argument('-c', dest='comm', type=str,
+                        default='gloo', choices=['gloo'])
 
     return parser
 
@@ -116,8 +125,8 @@ def run_ray(args, experiment_cls, name, tag):
 
     config = GlooFileStoreConfig()
     config.tcp_iface = 'enp175s0f0'
-    config.file_store_path = '/N/u/d/dnperera/gloo'
-    config.timeout = 1800
+    config.file_store_path = f'/N/u2/d/dnperera/gloo'
+    config.timeout = 180000
 
     for r in row_cases:
         for w in world_cases:
@@ -129,6 +138,10 @@ def run_ray(args, experiment_cls, name, tag):
                 procs = int(math.ceil(w / TOTAL_NODES))
                 start_ray(procs, min(w, TOTAL_NODES))
 
+                if os.path.exists(config.file_store_path):
+                    shutil.rmtree(config.file_store_path)
+                os.makedirs(config.file_store_path)
+
                 print(f"world sz {w} procs per worker {procs} iter {args['it']}", flush=True)
 
                 args['rows'] = r
@@ -136,14 +149,21 @@ def run_ray(args, experiment_cls, name, tag):
 
                 ray.init(address=f'{sched_node}:6379', _redis_password=ray_pw)
 
+                print('resources:', ray.available_resources())
+
                 runner = RayRunner(args['world_sz'], name, config, experiment_cls, args, tag=tag)
                 runner.run()
 
                 print(f'----------------- {name} complete case {r} {w}')
 
             except Exception:
+                traceback.print_exception(*sys.exc_info())
                 print(f'----------------- {name} case {r} {w} ERROR occured!')
             finally:
                 runner.shutdown()
                 ray.shutdown()
                 del runner
+                stop_ray()
+
+                if os.path.exists(config.file_store_path):
+                    shutil.rmtree(config.file_store_path)
