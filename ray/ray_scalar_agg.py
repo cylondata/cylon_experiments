@@ -31,8 +31,7 @@ script = os.path.basename(__file__).replace('.py', '')
 
 
 if __name__ == "__main__":
-    os.environ["MODIN_ENGINE"] = engine
-
+    
     for r in rows:
         max_val = r * args['unique']
         rng = default_rng()
