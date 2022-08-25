@@ -5,6 +5,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import traceback
 
 from cylon_experiments.cylonflow import CFlowRunner
 
@@ -153,6 +154,7 @@ def run_dask(args, config, experiment_cls, name, tag):
                 print(f'----------------- {name} complete case {r} {w}')
             
             except Exception:
+                traceback.print_exception(*sys.exc_info())
                 print(f'----------------- {name} case {r} {w} ERROR occured!')
             finally:
                 dask_runner.shutdown()

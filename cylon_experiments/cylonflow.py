@@ -12,9 +12,11 @@ from pycylon import DataFrame
 
 class CFlowExperiment(ABC):
     args: dict = None
+    bypass_len_check: bool = False
 
-    def __init__(self, args) -> None:
+    def __init__(self, args, bypass_len_check=False) -> None:
         self.args = args
+        self.bypass_len_check = bypass_len_check
 
     def generate_data(self, rng, tot_rows, world_sz, cols=2, unique_fac=1.) -> Any:
         rows = int(tot_rows / world_sz)
@@ -44,7 +46,7 @@ class CFlowExperiment(ABC):
             out_len_i, tm = self.experiment(cylon_env, data)
             cylon_env.barrier()
 
-            if i == 0:
+            if i == 0 or self.bypass_len_check:
                 out_len = out_len_i
             elif out_len != out_len_i:
                 raise ValueError('experiment iterations result sizes are different')
@@ -133,6 +135,27 @@ class ScalarAggExp(CFlowExperiment):
         del tb3
         del tb4
         gc.collect()
+
+        return l_len, (t2 - t1) * 1000
+
+
+class SortExperiment(CFlowExperiment):
+    def __init__(self, args):
+        super().__init__(args, bypass_len_check=True)
+
+    def experiment(self, env, data) -> Tuple[int, float]:
+        w = env.world_size
+        df1 = DataFrame(data)
+        env.barrier()
+
+        t1 = time.time()
+        df2 = df1.sort_values(by=0, env=env, sampling=self.args['algo'], num_bins=w*100, num_samples=w*1000)
+        env.barrier()
+        t2 = time.time()
+
+        l_len = len(df2)
+        del df1
+        del df2
 
         return l_len, (t2 - t1) * 1000
 
