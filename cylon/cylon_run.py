@@ -33,15 +33,17 @@ for s in args['script']:
         for w in world:
             print(f"{s} rows {r} world_size {w} starting!", flush=True)           
             hostfile = "" if w == 1 else "--hostfile nodes.txt"
-            exec = f"mpirun --map-by node --report-bindings --mca btl \"vader,tcp,openib," \
+            exec = f"mpirun --map-by node --mca btl \"vader,tcp,openib," \
                         f"self\" --mca btl_tcp_if_include enp175s0f0 --mca btl_openib_allow_ib 1 " \
                         f"{hostfile} --bind-to core --bind-to socket --mca mpi_preconnect_mpi 1 -np {w} " \
                         f"{sys.executable} {script} -r {r} -i {it} -o {out_dir} {args['sargs']}"
             print("running", exec, flush=True)
 
             out = subprocess.run(exec, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True, text=True)
+            print(out.stdout)
             if out.returncode != 0:
-                sys.exit("Failed: " + out.stderr)
+                sys.exit("Failed:\n" + out.stderr)
+            
                                 
             print(f"{s} rows {r} world_size {w} done!", flush=True)
     print(f"{s} done!\n ====================================== \n", flush=True)

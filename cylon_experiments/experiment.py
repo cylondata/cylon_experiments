@@ -1,6 +1,7 @@
 import argparse
 import gc
 import os
+import time
 from abc import abstractmethod
 from typing import Tuple, Any
 
@@ -147,3 +148,4 @@ class CylonExperiment:
                     pd.DataFrame(timing).to_csv(file_path,
                                                 index=False,
                                                 header=True)
+                print(f"{self.name} DONE! {args}", flush=True)
