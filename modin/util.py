@@ -1,18 +1,25 @@
+import os
 from platform import node
 import subprocess
+import sys
 import time
+
+python_exec = sys.executable
+prefix = sys.prefix
+home_dir = os.path.expanduser("~")
 
 TOTAL_NODES = 14
 MAX_PROCS = 40
 TOTAL_MEM = 240
 RAY_PW = '1234'
-# RAY_EXEC = "/N/u2/d/dnperera/victor/MODIN/bin/ray"
-RAY_EXEC = "/N/u2/d/dnperera/victor/modin_env/bin/ray"
+RAY_EXEC = f"{prefix}/bin/ray"
 HEAD_IP="v-001"
 
-DASK_SCHED = "/N/u2/d/dnperera/victor/modin_env/bin/dask-scheduler"
-SCHED_FILE = "/N/u2/d/dnperera/dask-sched.json"
-DASK_WORKER = "/N/u2/d/dnperera/victor/modin_env/bin/dask-worker"
+
+
+DASK_SCHED = f"{prefix}/bin/dask-scheduler"
+SCHED_FILE = f"{home_dir}/sched.json"
+DASK_WORKER = f"{prefix}/bin/dask-worker"
 SCHED_IP = "v-001"
 
 nodes_file = "nodes.txt"
@@ -69,8 +76,8 @@ def start_dask(procs, nodes):
     
     for ip in ips[0:nodes]:
         # print("starting worker", ip, flush=True)
-        q = ["ssh", ip, DASK_WORKER, f"{ips[0]}:8786", "--interface", "enp175s0f0", \
-                "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM/procs)} GiB\"", \
+        q = ["ssh", ip, DASK_WORKER, f"{SCHED_IP}:8786", "--interface", "enp175s0f0", \
+                "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM)} GiB\"", \
                 "--local-directory", "/scratch_hdd/dnperera1/dask/", "--scheduler-file", SCHED_FILE]
         # print(f"running {' '.join(q)}", flush=True)
         subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

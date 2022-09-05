@@ -1,4 +1,6 @@
+from audioop import avg
 import os
+from statistics import stdev
 import time
 import argparse
 import math
@@ -10,6 +12,10 @@ import pandas as pd
 from numpy.random import default_rng
 
 from pyspark.sql import SparkSession
+from pyspark.sql.functions import sum as s_sum
+from pyspark.sql.functions import avg as s_avg
+from pyspark.sql.functions import stddev as s_stddev
+
 
 
 parser = argparse.ArgumentParser(description='generate random data')
@@ -33,7 +39,7 @@ TOTAL_MEM = 240
 TOTAL_NODES = 14
 
 f0 = '/N/u/d/dnperera/data/cylon/df0_512.parquet'
-f1 = '/N/u/d/dnperera/data/cylon/df1_512.parquet'
+# f1 = '/N/u/d/dnperera/data/cylon/df1_512.parquet'
 r = 1000000000
 
 
@@ -71,7 +77,7 @@ if __name__ == "__main__":
             # .config('spark.executor.instances', f'{w}')\
         spark = SparkSession\
             .builder\
-            .appName(f'join {r} {w}')\
+            .appName(f'{script} {r} {w}')\
             .master('spark://v-001:7077')\
             .config('spark.driver.memory', '100g')\
             .config('spark.executor.memory', f'{int(mem*0.6)}g')\
@@ -83,13 +89,13 @@ if __name__ == "__main__":
 
 
         sdf0 = spark.read.parquet(f0).repartition(w).cache()
-        sdf1 = spark.read.parquet(f1).repartition(w).cache()
-        print(f"data loaded to spark {sdf0.count()} {sdf1.count()}", flush=True)
+        # sdf1 = spark.read.parquet(f1).repartition(w).cache()
+        print(f"data loaded to spark {sdf0.count()}", flush=True)
 
         try:           
             for i in range(it):
                 t1 = time.time()
-                out = sdf0.join(sdf1, on='col0', how='inner')
+                out = sdf0.sort('col1')
                 count = out.count()
                 t2 = time.time()
 
