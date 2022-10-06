@@ -4,7 +4,6 @@ import argparse
 import math
 import os 
 import gc
-from turtle import home
 import numpy as np
 from numpy.random import default_rng
 
@@ -23,7 +22,6 @@ args = parser.parse_args()
 args = vars(args)
 print(args, flush=True)
 
-# scale = args['scale']
 world = args['world']
 rows = args['rows']
 it = args['it']
@@ -33,20 +31,19 @@ if engine == 'dask':
     script = 'dask_' + script 
 
 home_dir = os.path.expanduser("~")
-
+    
 if __name__ == "__main__":
     os.environ["MODIN_ENGINE"] = engine
 
     for r in rows:
-        max_val = r * args['unique']
-        rng = default_rng()
-        frame_data = rng.integers(0, max_val, size=(r, 2)) 
-        frame_data1 = rng.integers(0, max_val, size=(r, 2)) 
-        print(f"data generated", flush=True)
-
+        # max_val = r * args['unique']
+        # rng = default_rng()
+        # frame_data = rng.integers(0, max_val, size=(r, 2)) 
+        # print(f"data generated", flush=True)
+        
         f0 = f'{home_dir}/data/cylon/{r}/df0_512.parquet'
         f1 = f'{home_dir}/data/cylon/{r}/df1_512.parquet'
-        
+
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
             print(f"world sz {w} procs per worker {procs} iter {it}", flush=True)
@@ -66,11 +63,10 @@ if __name__ == "__main__":
                 elif engine == 'dask':
                     from dask.distributed import Client
                     client = Client(f"{SCHED_IP}:8786")
-
+                    
                     if client is None:
                         print(f"unable to connect dask client", flush=True)
                         exit(1) 
-                
                 
                 import modin.config as cfg
                 # pd.DEFAULT_NPARTITIONS = w
@@ -78,17 +74,22 @@ if __name__ == "__main__":
                 cfg.Engine.put(engine)
                 cfg.StorageFormat.put('pandas')
 
+                if engine=='ray':
+                    cfg.RayRedisAddress.put(f'{HEAD_IP}:6379')
+                    cfg.RayRedisPassword.put(RAY_PW)
+                
                 import modin.pandas as pd
             
                 for i in range(it):
 
-                    df_l = pd.read_parquet(f0)
-                    df_r = pd.read_parquet(f1)
+                    # df = pd.DataFrame(frame_data, columns=["col0", "col1"])
+                    # df_r = pd.DataFrame(frame_data1).add_prefix("col")
+                    df = pd.read_parquet(f0)
                     print(f"data loaded", flush=True)
 
 
                     t1 = time.time()
-                    out = df_l.merge(df_r, on='col0', how='inner', suffixes=('_left', '_right'))
+                    out = df.sort_values(by='col0')
                     t2 = time.time()
 
                     # timing = {'rows': [], 'world':[], 'it':[], 'time':[]}
@@ -97,10 +98,9 @@ if __name__ == "__main__":
                     timing['world'].append(w)
                     timing['it'].append(i)
                     timing['time'].append((t2 - t1) * 1000)
-                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {out.shape[0]}", flush=True)
+                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {len(out)}", flush=True)
                     
-                    del df_l 
-                    del df_r
+                    del df 
                     del out 
                     gc.collect()
 
@@ -112,4 +112,4 @@ if __name__ == "__main__":
             finally:
                 stop_cluster(engine)
                 import pandas as pd
-                pd.DataFrame(timing).to_csv(f'{script}_{engine}.csv', mode='a', index=False, header=False)
+                pd.DataFrame(timing).to_csv(f'{script}.csv', mode='a', index=False, header=False)

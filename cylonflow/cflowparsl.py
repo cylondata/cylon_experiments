@@ -1,39 +1,30 @@
 import argparse
+import time
 
+import parsl
 from parsl.config import Config
-from cylonflow.parsl.executor import CylonEnvExecutor
 from parsl.providers import LocalProvider
+
+from cylonflow.parsl.executor import CylonEnvExecutor
 
 from cylon_experiments.cylonflow import CFlowRunner
 
 
 def get_generic_args(description):
     parser = argparse.ArgumentParser(description=description)
-    parser.add_argument('-R', dest='row_cases', type=int, required=True, nargs='+')
-    parser.add_argument('-W', dest='world_cases', type=int, required=True, nargs='+')
-    # parser.add_argument('-w', dest='world_sz', type=int, required=True)
-    # parser.add_argument('-r', dest='rows', type=int, required=True)
+    parser.add_argument('-R', dest='row_cases', type=int,
+                        required=True, nargs='+')
+    parser.add_argument('-W', dest='world_cases',
+                        type=int, required=True, nargs='+')
     parser.add_argument('-i', dest='it', type=int, required=True)
     parser.add_argument('-o', dest='out', type=str, required=True)
-    parser.add_argument('-u', dest='unique', type=float, default=1.0, help="unique factor")
+    parser.add_argument('-u', dest='unique', type=float,
+                        default=1.0, help="unique factor")
     parser.add_argument('--cols', dest='cols', type=int, default=2)
-    parser.add_argument('-c', dest='comm', type=str, default='gloo', choices=['gloo'])
+    parser.add_argument('-c', dest='comm', type=str,
+                        default='mpi', choices=['mpi', 'ucx'])
 
     return parser
-
-
-class ParslRunner(CFlowRunner):
-    executors: CylonEnvExecutor
-    config: Config
-
-    def __init__(self, world_size, name, experiment_cls, args, tag):
-        super().__init__(world_size, name, None, args, tag)
-
-    def initialize_executor(self):
-        pass
-
-    def shutdown(self):
-        self.executor.shutdown()
 
 
 host_file_txt = """v-001 slots=40
@@ -53,6 +44,47 @@ v-014 slots=40
 v-015 slots=40
 """
 
+mpi_params = "--mca btl \"vader,tcp,openib,self\" "\
+    "--mca btl_tcp_if_include enp175s0f0 "\
+    "--mca btl_openib_allow_ib 1 " \
+    "--mca mpi_preconnect_mpi 1 "\
+    "--map-by node --bind-to core --bind-to socket "
+
+
+class ParslRunner(CFlowRunner):
+    def __init__(self, world_size, name, cylon_app, args, tag='') -> None:
+        super().__init__(world_size, name, None, args, tag)
+        self.cylon_app = cylon_app
+
+    def initialize_executor(self):
+        self.cylon_exec = CylonEnvExecutor(
+            comm_type=self.args['comm'],
+            label="cylon_parsl",
+            address="172.29.200.201",
+            ranks_per_node=self.world_size + 1,
+            worker_debug=True,
+            heartbeat_threshold=3600,
+            hostfile=host_file_txt,
+            mpi_params=mpi_params,
+            provider=LocalProvider(),
+        )
+
+        self.config = Config(executors=[self.cylon_exec],
+                             run_dir='/tmp/parsl')
+        
+        parsl.load(self.config)
+
+    def execute_experiment(self):
+        result = self.cylon_app(self.args).result()
+        return result.payloads
+
+    def shutdown(self):
+        self.cylon_exec.shutdown()
+        parsl.clear()
+        del self.config, self.cylon_exec
+
+        time.sleep(1)  # let executor shutdown cluster
+
 
 def run_parsl(cylon_app, args, name, tag):
     print('args', args)
@@ -64,40 +96,14 @@ def run_parsl(cylon_app, args, name, tag):
         for w in world_cases:
             print(f'----------------- starting {name} case {r} {w}')
 
-            executor = CylonEnvExecutor(
-                label="cylon_parsl",
-                address="127.0.0.1",
-                ranks_per_node=7,
-                worker_debug=True,
-                heartbeat_threshold=10,
-                # hostfile="nodes.txt"
-                hostfile=host_file_txt,
-                mpi_params="--oversubscribe",
-                provider=LocalProvider(),
-            )
-            config: Config
-
+            parsl_runner = None
             try:
-                stop_dask()
-
-                procs = int(math.ceil(w / TOTAL_NODES))
-                start_dask(procs, min(w, TOTAL_NODES))
-
-                print(f"world sz {w} procs per worker {procs} iter {args['it']}", flush=True)
-
                 args['rows'] = r
                 args['world_sz'] = w
 
-                dask_runner = DaskRunner(args['world_sz'], name, config, experiment_cls, args,
-                                         scheduler_file=sched_file, tag=tag)
-                dask_runner.run()
+                parsl_runner = ParslRunner(w, name, cylon_app, args, tag)
+                parsl_runner.run()
 
                 print(f'----------------- {name} complete case {r} {w}')
-
-            except Exception:
-                traceback.print_exception(*sys.exc_info())
-                print(f'----------------- {name} case {r} {w} ERROR occured!')
             finally:
-                dask_runner.shutdown()
-                del dask_runner
-                # stop_dask()
+                parsl_runner.shutdown()

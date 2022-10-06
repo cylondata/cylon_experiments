@@ -30,16 +30,20 @@ script = os.path.basename(__file__).replace('.py', '')
 if engine == 'dask':
     script = 'dask_' + script 
 
+home_dir = os.path.expanduser("~")
     
 if __name__ == "__main__":
     os.environ["MODIN_ENGINE"] = engine
 
     for r in rows:
-        max_val = r * args['unique']
-        rng = default_rng()
-        frame_data = rng.integers(0, max_val, size=(r, 2)) 
-        print(f"data generated", flush=True)
+        # max_val = r * args['unique']
+        # rng = default_rng()
+        # frame_data = rng.integers(0, max_val, size=(r, 2)) 
+        # print(f"data generated", flush=True)
         
+        f0 = f'{home_dir}/data/cylon/{r}/df0_512.parquet'
+        f1 = f'{home_dir}/data/cylon/{r}/df1_512.parquet'
+
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
             print(f"world sz {w} procs per worker {procs} iter {it}", flush=True)
@@ -78,8 +82,9 @@ if __name__ == "__main__":
             
                 for i in range(it):
 
-                    df = pd.DataFrame(frame_data, columns=["col0", "col1"])
+                    # df = pd.DataFrame(frame_data, columns=["col0", "col1"])
                     # df_r = pd.DataFrame(frame_data1).add_prefix("col")
+                    df = pd.read_parquet(f0)
                     print(f"data loaded", flush=True)
 
 
@@ -93,7 +98,7 @@ if __name__ == "__main__":
                     timing['world'].append(w)
                     timing['it'].append(i)
                     timing['time'].append((t2 - t1) * 1000)
-                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {out.shape[0]}", flush=True)
+                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {len(out)}", flush=True)
                     
                     del df 
                     del out 

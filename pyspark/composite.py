@@ -1,6 +1,4 @@
-from audioop import avg
 import os
-from statistics import stdev
 import time
 import argparse
 import math
@@ -13,10 +11,6 @@ from numpy.random import default_rng
 
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import sum as s_sum
-from pyspark.sql.functions import avg as s_avg
-from pyspark.sql.functions import stddev as s_stddev
-
-
 
 parser = argparse.ArgumentParser(description='generate random data')
 
@@ -38,10 +32,6 @@ world = args['world']
 TOTAL_MEM = 240
 TOTAL_NODES = 14
 
-f0 = '/N/u/d/dnperera/data/cylon/df0_512.parquet'
-# f1 = '/N/u/d/dnperera/data/cylon/df1_512.parquet'
-# r = 1000000000
-
 
 if __name__ == "__main__":
     for r in rows:
@@ -54,6 +44,9 @@ if __name__ == "__main__":
         # df_l = pd.DataFrame(frame_data).add_prefix("col")
         # df_r = pd.DataFrame(frame_data1).add_prefix("col")
         # print(f"data loaded", flush=True)
+
+        f0 = f'/N/u/d/dnperera/data/cylon/{r}/df0_512.parquet'
+        f1 = f'/N/u/d/dnperera/data/cylon/{r}/df1_512.parquet'
         
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
@@ -77,7 +70,7 @@ if __name__ == "__main__":
                 # .config('spark.executor.instances', f'{w}')\
             spark = SparkSession\
                 .builder\
-                .appName(f'{script} {r} {w}')\
+                .appName(f'join {r} {w}')\
                 .master('spark://v-001:7077')\
                 .config('spark.driver.memory', '100g')\
                 .config('spark.executor.memory', f'{int(mem*0.6)}g')\
@@ -88,26 +81,26 @@ if __name__ == "__main__":
                 .getOrCreate()
 
 
-            f0 = f'/N/u/d/dnperera/data/cylon/{r}/df0_512.parquet'
             sdf0 = spark.read.parquet(f0).repartition(w).cache()
-            # sdf1 = spark.read.parquet(f1).repartition(w).cache()
-            print(f"data loaded to spark {sdf0.count()}", flush=True)
-            val = np.random.randint(0, r)
+            sdf1 = spark.read.parquet(f1).repartition(w).cache()
+            print(f"data loaded to spark {sdf0.count()} {sdf1.count()}", flush=True)
 
             try:           
                 for i in range(it):
                     t1 = time.time()
-                    out = sdf0.groupby().sum('col0', 'col1').collect()
-                    count = 2
+                    out = sdf0.join(sdf1, on='col0', how='inner').toDF('col0', 'col1', 'col11') \
+                            .groupby('col0').agg(s_sum('col1')) \
+                            .sort('col0').cache()
+                    count = out.count()
                     t2 = time.time()
 
                     timing['rows'].append(r)
                     timing['world'].append(w)
                     timing['it'].append(i)
                     timing['time'].append((t2 - t1) * 1000)
-                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {count} {out}", flush=True)
+                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {count}", flush=True)
                     
-                    # out.unpersist(True)
+                    out.unpersist(True)
                     del out
                     del count
                     gc.collect()

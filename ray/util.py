@@ -1,20 +1,27 @@
 import argparse
+from distutils.command.config import config
 import math
+import os
 import subprocess
-from sys import prefix
+import sys
 import time
 
 TOTAL_NODES = 14
 MAX_PROCS = 40
 TOTAL_MEM = 240
 RAY_PW = '1234'
+
+python_exec = sys.executable
+prefix = sys.prefix
+home_dir = os.path.expanduser("~")
+
 # RAY_EXEC = "/N/u2/d/dnperera/victor/MODIN/bin/ray"
-RAY_EXEC = "/N/u2/d/dnperera/victor/modin_env/bin/ray"
+RAY_EXEC = f"{prefix}/bin/ray"
 HEAD_IP="v-001"
 
-DASK_SCHED = "/N/u2/d/dnperera/victor/modin_env/bin/dask-scheduler"
-SCHED_FILE = "/N/u2/d/dnperera/dask-sched.json"
-DASK_WORKER = "/N/u2/d/dnperera/victor/modin_env/bin/dask-worker"
+DASK_SCHED = f"{prefix}/bin/dask-scheduler"
+SCHED_FILE = f"{home_dir}/sched.json"
+DASK_WORKER = f"{prefix}/bin/dask-worker"
 SCHED_IP = "v-001"
 
 nodes_file = "nodes.txt"
@@ -26,33 +33,28 @@ with open(nodes_file, 'r') as fp:
 
 assert len(ips) == TOTAL_NODES
 
-def start_ray(procs, nodes, head, prefix):
-    ray_exec = f'{prefix}/bin/ray' if prefix else RAY_EXEC
-    if not head:
-        head = HEAD_IP
+# config_str = "--system-config=\'{\"object_spilling_config\":\"{\\\"type\\\":\\\"filesystem\\\",\\\"params\\\":{\\\"directory_path\\\":\\\"/scratch_hdd/ray\\\",\\\"buffer_size\\\":1000000}}\"}\'"
+config_str=""
+
+def start_ray(procs, nodes, head=HEAD_IP, prefix=prefix):
+    ray_exec = f'{prefix}/bin/ray'
 
     print("starting head", flush=True)
     query = f"ssh {head} {ray_exec} start --head --port=6379 --node-ip-address={head} --redis-password={RAY_PW} \
-        --num-cpus={min(2, procs)}"           
+        --num-cpus={min(2, procs)} --object-store-memory={int(240/2*0.9*10**9)} {config_str}"           
     print(f"running: {query}", flush=True)
     subprocess.run(query, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, check=True)
-
-    time.sleep(3)
 
     for ip in ips[0:nodes]:
         # print(f"starting worker {ip}", flush=True)
         query = f"ssh {ip} {ray_exec} start --address=\'{head}:6379\' --node-ip-address={ip} --redis-password={RAY_PW} \
-            --num-cpus={procs}"
-        print(f"running: {query}", flush=True)
+            --num-cpus={procs} --object-store-memory={int(240/2*0.9*10**9)} {config_str}"
+        # print(f"running: {query}", flush=True)
         subprocess.run(query, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, check=True)
 
-    time.sleep(3)
 
-
-def stop_ray(head, prefix):
-    ray_exec = f'{prefix}/bin/ray' if prefix else RAY_EXEC
-    if not head:
-        head = HEAD_IP
+def stop_ray(head=HEAD_IP, prefix=prefix):
+    ray_exec = f'{prefix}/bin/ray'
 
     import ray
     ray.shutdown()
@@ -60,13 +62,10 @@ def stop_ray(head, prefix):
     print("stopping workers", flush=True)
     for ip in ips:
         subprocess.run(f"ssh {ip} {ray_exec} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-    
-    time.sleep(3)
-    
+        
     print("stopping head", flush=True)
     subprocess.run(f"ssh {head} {ray_exec} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True) 
     
-    time.sleep(3)
 
 
 def start_dask(procs, nodes):
@@ -104,7 +103,7 @@ def stop_dask():
     time.sleep(3) 
 
 
-def start_cluster(engine, procs, nodes, head, prefix):
+def start_cluster(engine, procs, nodes, head=HEAD_IP, prefix=prefix):
     if engine == 'ray':
         start_ray(procs, nodes, head, prefix)
     elif engine == 'dask':
@@ -113,7 +112,7 @@ def start_cluster(engine, procs, nodes, head, prefix):
         raise Exception(f"{engine} not supported")
 
 
-def stop_cluster(engine, head, prefix):
+def stop_cluster(engine, head=HEAD_IP, prefix=prefix):
     if engine == 'ray':
         stop_ray(head, prefix)
     elif engine == 'dask':

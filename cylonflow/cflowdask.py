@@ -48,6 +48,8 @@ fds = []
 def start_dask(procs, nodes):
     global fds
 
+    os.makedirs('/scratch_hdd/dnperera1/dask', exist_ok=True)
+    
     fds = [open(f'/scratch_hdd/dnperera1/dask/scheduler.log', mode='a')]
     print("starting scheduler", flush=True)
     # q = f"{DASK_SCHED} --interface enp175s0f0 --scheduler-file {SCHED_FILE}"

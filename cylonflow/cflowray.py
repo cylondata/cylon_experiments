@@ -125,7 +125,7 @@ def run_ray(args, experiment_cls, name, tag):
 
     config = GlooFileStoreConfig()
     config.tcp_iface = 'enp175s0f0'
-    config.file_store_path = f'/N/u2/d/dnperera/gloo'
+    config.file_store_path = f'/N/u/d/dnperera/gloo'
     config.timeout = 180000
 
     for r in row_cases:

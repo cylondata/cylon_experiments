@@ -1,16 +1,16 @@
 import os
-
+import sys
 
 import time
 import argparse
 import math
 import subprocess
-import os 
 import gc
+import traceback
 import numpy as np
 import pandas as pd 
 from numpy.random import default_rng
-from dask.dataframe import from_pandas
+from dask.dataframe import from_pandas, read_parquet
 from dask.distributed import Client, wait
 
 parser = argparse.ArgumentParser(description='generate random data')
@@ -34,9 +34,13 @@ TOTAL_NODES = 14
 MAX_PROCS = 40
 TOTAL_MEM = 240
 
-DASK_SCHED = "/N/u2/d/dnperera/victor/modin_env/bin/dask-scheduler"
-SCHED_FILE = "/N/u2/d/dnperera/dask-sched.json"
-DASK_WORKER = "/N/u2/d/dnperera/victor/modin_env/bin/dask-worker"
+python_exec = sys.executable
+prefix = sys.prefix
+home_dir = os.path.expanduser("~")
+
+DASK_SCHED = f"{prefix}/bin/dask-scheduler"
+SCHED_FILE = f"{home_dir}/sched.json"
+DASK_WORKER = f"{prefix}/bin/dask-worker"
 SCHED_IP = "v-001"
 
 
@@ -66,7 +70,7 @@ def start_dask(procs, nodes):
         # q = f"ssh {ip} {DASK_WORKER} v-001:8786 --interface enp175s0f0 --nthreads 1 --nprocs {str(procs)} \
         #         --local-directory /scratch/dnperera/dask/ --scheduler-file {SCHED_FILE}"
         q = ["ssh", ip, DASK_WORKER, f"{ips[0]}:8786", "--interface", "enp175s0f0", \
-                "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM/procs)} GiB\"", \
+                "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM)} GiB\"", \
                 "--local-directory", "/scratch_hdd/dnperera1/dask/", "--scheduler-file", SCHED_FILE]
         # print(f"running {' '.join(q)}", flush=True)
         subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -87,6 +91,9 @@ def stop_dask():
     subprocess.Popen(["ssh", SCHED_IP, "pkill", "-f", "dask-scheduler"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     time.sleep(3) 
 
+    if os.path.exists(SCHED_FILE):
+        os.remove(SCHED_FILE)
+
     
 if __name__ == "__main__":
     
@@ -98,6 +105,9 @@ if __name__ == "__main__":
 
         pdf = pd.DataFrame(frame_data).add_prefix('col')
         print(f"data generated", flush=True)
+
+        f0 = f'/N/u/d/dnperera/data/cylon/{r}/df0_512.parquet'
+        f1 = f'/N/u/d/dnperera/data/cylon/{r}/df1_512.parquet'
         
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
@@ -111,31 +121,38 @@ if __name__ == "__main__":
                 start_dask(procs, min(w, TOTAL_NODES))
 
                 client = Client(f"{SCHED_IP}:8786")
-            
+
+                # df_l = read_parquet(f0).repartition(npartitions=w)
+                df_l = from_pandas(pdf, npartitions=w)
+                df_l = client.persist(df_l)
+                wait([df_l])
+                print(f"data loaded", flush=True)
+           
                 for i in range(it):
-
-                    df_l = from_pandas(pdf, npartitions=w)
-                    wait([client.persist(df_l)])
-                    print(f"data loaded", flush=True)
-
-
                     t1 = time.time()
                     out = df_l.groupby(by='col0').agg({'col1': ["sum", "mean", "std"]})
-                    wait([client.persist(out)])
+                    out = client.persist(out)
+                    wait([df_l, out])
+                    count = out.shape[0].compute()
                     t2 = time.time()
 
                     timing['rows'].append(r)
                     timing['world'].append(w)
                     timing['it'].append(i)
                     timing['time'].append((t2 - t1) * 1000)
-                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {out.shape[0]}", flush=True)
+                    print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {count}", flush=True)
                     
-                    client.cancel(df_l)
-                    client.cancel(out)
+                    client.cancel([out])
+                    # client.cancel(out)
                     # gc.collect()
                 
-                    client.restart()
-                    gc.collect()
+                client.cancel([df_l], asynchronous=False, force=True)
+                client.restart()
+                # gc.collect()
+            except Exception:
+                print(f"Exception occured!")
+                traceback.print_exception(*sys.exc_info())
+                client.restart()
             finally:
                 stop_dask()
                 pd.DataFrame(timing).to_csv(f'{script}.csv', mode='a', index=False, header=False)

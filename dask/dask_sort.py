@@ -1,19 +1,16 @@
-from argparse import _CountAction
-import traceback
-import sys
 import os
-
+import sys
 
 import time
 import argparse
 import math
 import subprocess
-import os 
 import gc
+import traceback
 import numpy as np
 import pandas as pd 
 from numpy.random import default_rng
-from dask.dataframe import from_pandas
+from dask.dataframe import from_pandas, read_parquet
 from dask.distributed import Client, wait
 
 parser = argparse.ArgumentParser(description='generate random data')
@@ -60,7 +57,7 @@ assert len(ips) == TOTAL_NODES
 
 
 def start_dask(procs, nodes):
-    print("starting dask", flush=True)
+    print("starting scheduler", flush=True)
     # q = f"{DASK_SCHED} --interface enp175s0f0 --scheduler-file {SCHED_FILE}"
     q = ["ssh", SCHED_IP, DASK_SCHED, "--interface", "enp175s0f0", "--scheduler-file", SCHED_FILE]
     subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -73,7 +70,7 @@ def start_dask(procs, nodes):
         # q = f"ssh {ip} {DASK_WORKER} v-001:8786 --interface enp175s0f0 --nthreads 1 --nprocs {str(procs)} \
         #         --local-directory /scratch/dnperera/dask/ --scheduler-file {SCHED_FILE}"
         q = ["ssh", ip, DASK_WORKER, f"{ips[0]}:8786", "--interface", "enp175s0f0", \
-                "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM/procs)} GiB\"", \
+                "--nthreads", "1", "--nprocs", str(procs), f"--memory-limit=\"{int(TOTAL_MEM)} GiB\"", \
                 "--local-directory", "/scratch_hdd/dnperera1/dask/", "--scheduler-file", SCHED_FILE]
         # print(f"running {' '.join(q)}", flush=True)
         subprocess.Popen(q, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -81,7 +78,7 @@ def start_dask(procs, nodes):
     time.sleep(5)   
 
 def stop_dask():   
-    print("stopping dask", flush=True)
+    print("stopping dask", flush=True) 
     for ip in ips:
         # print("stopping worker", ip, flush=True)
         q= ["ssh", ip, "pkill", "-f", "dask-worker"]
@@ -94,6 +91,9 @@ def stop_dask():
     subprocess.Popen(["ssh", SCHED_IP, "pkill", "-f", "dask-scheduler"], stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     time.sleep(3) 
 
+    if os.path.exists(SCHED_FILE):
+        os.remove(SCHED_FILE)
+
     
 if __name__ == "__main__":
     
@@ -105,6 +105,9 @@ if __name__ == "__main__":
 
         pdf = pd.DataFrame(frame_data).add_prefix('col')
         print(f"data generated", flush=True)
+
+        f0 = f'/N/u/d/dnperera/data/cylon/{r}/df0_512.parquet'
+        f1 = f'/N/u/d/dnperera/data/cylon/{r}/df1_512.parquet'
         
         for w in world:
             procs = int(math.ceil(w / TOTAL_NODES))
@@ -117,18 +120,20 @@ if __name__ == "__main__":
                 stop_dask()
                 start_dask(procs, min(w, TOTAL_NODES))
 
-                client = Client(f"{SCHED_IP}:8786")
+                client = Client(scheduler_file=SCHED_FILE)
+                client.restart()
 
+                # df_l = read_parquet(f0).repartition(npartitions=w)
                 df_l = from_pandas(pdf, npartitions=w)
                 df_l = client.persist(df_l)
                 wait([df_l])
                 print(f"data loaded", flush=True)
-            
+           
                 for i in range(it):
                     t1 = time.time()
-                    out = df_l.sum()
+                    out = df_l.sort_values(by='col0')
                     out = client.persist(out)
-                    wait([out])
+                    wait([df_l, out])
                     count = out.shape[0].compute()
                     t2 = time.time()
 
@@ -138,11 +143,12 @@ if __name__ == "__main__":
                     timing['time'].append((t2 - t1) * 1000)
                     print(f"timings {r} {w} {i} {(t2 - t1) * 1000:.0f} ms, {count}", flush=True)
                     
-                    client.cancel([out])
-                    gc.collect()
-
-                client.cancel([df_l]) 
-                client.restart()
+                    client.cancel([out], asynchronous=False, force=True)
+                    # client.cancel(out)
+                    # gc.collect()
+                
+                client.cancel([df_l], asynchronous=False, force=True)
+                # gc.collect()
             except Exception:
                 print(f"Exception occured!")
                 traceback.print_exception(*sys.exc_info())

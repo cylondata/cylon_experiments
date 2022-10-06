@@ -34,20 +34,18 @@ assert len(ips) == TOTAL_NODES
 def start_ray(procs, nodes):
     print("starting head", flush=True)
     query = f"ssh {HEAD_IP} {RAY_EXEC} start --head --port=6379 --node-ip-address={HEAD_IP} --redis-password={RAY_PW} \
-        --num-cpus={min(2, procs)}"           
-    print(f"running: {query}", flush=True)
+        --num-cpus={min(2, procs)}  --object-store-memory={int(240/2*0.9*10**9)}"           
+    # print(f"running: {query}", flush=True)
     subprocess.run(query, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, check=True)
 
-    time.sleep(3)
 
     for ip in ips[0:nodes]:
         # print(f"starting worker {ip}", flush=True)
         query = f"ssh {ip} {RAY_EXEC} start --address=\'{HEAD_IP}:6379\' --node-ip-address={ip} --redis-password={RAY_PW} \
-            --num-cpus={procs}"
-        print(f"running: {query}", flush=True)
+            --num-cpus={procs} --object-store-memory={int(240/2*0.9*10**9)}"
+        # print(f"running: {query}", flush=True)
         subprocess.run(query, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True, check=True)
 
-    time.sleep(3)
 
 
 def stop_ray():
@@ -58,12 +56,10 @@ def stop_ray():
     for ip in ips:
         subprocess.run(f"ssh {ip} {RAY_EXEC} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
     
-    time.sleep(3)
     
     print("stopping head", flush=True)
     subprocess.run(f"{RAY_EXEC} stop -f", stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True) 
     
-    time.sleep(3)
 
 
 def start_dask(procs, nodes):

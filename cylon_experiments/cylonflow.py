@@ -42,8 +42,11 @@ class CFlowExperiment(ABC):
         out_len = -1
 
         for i in range(self.args['it']):
+            # print(i, "iter start", rank)
             cylon_env.barrier()
+            # print(i, "start exp", rank)
             out_len_i, tm = self.experiment(cylon_env, data)
+            # print(i, "end exp", rank)
             cylon_env.barrier()
 
             if i == 0 or self.bypass_len_check:
@@ -52,7 +55,9 @@ class CFlowExperiment(ABC):
                 raise ValueError('experiment iterations result sizes are different')
             exec_times[i] = tm
 
-            gc.collect()
+            # gc.collect()
+            # print(i, "iter end", rank)
+            time.sleep(2)
 
         return out_len, exec_times
 
@@ -160,6 +165,34 @@ class SortExperiment(CFlowExperiment):
         return l_len, (t2 - t1) * 1000
 
 
+class CompositeExperiment(CFlowExperiment):
+    def __init__(self, args):
+        super().__init__(args, bypass_len_check=True)
+
+    def experiment(self, env, data) -> Tuple[int, float]:
+        df1 = DataFrame(data[0])
+        df2 = DataFrame(data[1])
+        env.barrier()
+
+        t1 = time.time()
+        df3 = df1.merge(df2, on=[0], env=env) \
+                    .groupby(by=0, env=env).agg({1: "sum"}) \
+                    .sort_values([0], sampling='initial', env=env) + data[2]
+        env.barrier()
+        t2 = time.time()
+
+        l_len = len(df3)
+        del df1, df2, df3
+
+        return l_len, (t2 - t1) * 1000
+
+    def generate_data(self, rng, tot_rows, world_sz, cols=2, unique_fac=1):
+        data = super().generate_data(rng, tot_rows, world_sz, cols, unique_fac)
+        data1 = super().generate_data(rng, tot_rows, world_sz, cols, unique_fac)
+        val = rng.integers(0, tot_rows)
+        return data, data1, val
+
+
 class CFlowRunner(ABC):
     def __init__(self, world_size, name, experiment_cls, args, tag='') -> None:
         self.world_size = world_size
@@ -184,8 +217,11 @@ class CFlowRunner(ABC):
     def shutdown(self):
         raise NotImplementedError()
 
+    def execute_experiment(self):
+        return self.executor.execute_cylon(lambda exp, cylon_env: exp.run_experiment(cylon_env=cylon_env))
+
     def run(self):
-        result = self.executor.execute_cylon(lambda exp, cylon_env: exp.run_experiment(cylon_env=cylon_env))
+        result = self.execute_experiment()
         if len(result) != self.world_size:
             raise ValueError('len(result) != world_size')
         result0 = result[0]
